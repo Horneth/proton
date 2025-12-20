@@ -1,8 +1,11 @@
 package loader
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -61,6 +64,19 @@ func (l *SchemaLoader) loadFromImage(path string) ([]protoreflect.FileDescriptor
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	// Decompress if gzipped (magic number 0x1f 0x8b)
+	if len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b {
+		gr, err := gzip.NewReader(bytes.NewReader(data))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %v", err)
+		}
+		defer gr.Close()
+		data, err = io.ReadAll(gr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decompress gzip content: %v", err)
+		}
 	}
 
 	fds := &descriptorpb.FileDescriptorSet{}
