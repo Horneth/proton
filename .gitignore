@@ -4,3 +4,4 @@
 *.cert
 *.prep
 *.der
+*.json
