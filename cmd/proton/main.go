@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -20,8 +21,8 @@ func main() {
 	var e *engine.Engine
 
 	var rootCmd = &cobra.Command{
-		Use:   "canton-proto",
-		Short: "Specialized Canton Protobuf tool",
+		Use:   "proton",
+		Short: "Proton: Universal Protobuf & Canton Toolkit",
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if configPath == "" {
 				home, _ := os.UserHomeDir()
@@ -43,14 +44,155 @@ func main() {
 	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to configuration")
 
-	var isBase64 bool
+	// --- Helper to resolve schema file and remaining args ---
+	resolveSchemaArgs := func(args []string) (string, []string, error) {
+		envImage := os.Getenv("PROTO_IMAGE")
+		if len(args) > 0 {
+			if _, err := os.Stat(args[0]); err == nil {
+				return args[0], args[1:], nil
+			}
+			if envImage != "" {
+				return envImage, args, nil
+			}
+			return "", nil, fmt.Errorf("schema file %s not found and PROTO_IMAGE not set", args[0])
+		}
+		if envImage != "" {
+			return envImage, nil, nil
+		}
+		return "", nil, fmt.Errorf("missing schema file and PROTO_IMAGE not set")
+	}
+
+	// --- Generic Utility Commands ---
+
+	var templateCmd = &cobra.Command{
+		Use:   "template [schema-file] [message-name]",
+		Short: "Generate a JSON template from Protobuf message",
+		Args:  cobra.RangeArgs(1, 2),
+		Run: func(cmd *cobra.Command, args []string) {
+			schemaFile, remaining, err := resolveSchemaArgs(args)
+			if err != nil {
+				log.Fatalf("error: %v", err)
+			}
+			if len(remaining) == 0 {
+				log.Fatal("missing message name")
+			}
+			messageName := remaining[0]
+
+			tmpl, err := e.Template(context.Background(), schemaFile, messageName)
+			if err != nil {
+				log.Fatalf("failed to generate template: %v", err)
+			}
+
+			templateJSON, _ := json.MarshalIndent(tmpl, "", "  ")
+			fmt.Println(string(templateJSON))
+		},
+	}
+
+	var dataFlag string
+	var isBase64Flag bool
+	var versionedFlag bool
+
+	var decodeCmd = &cobra.Command{
+		Use:   "decode [schema-file] [message-name] ([data])",
+		Short: "Decode binary Protobuf data to JSON",
+		Args:  cobra.RangeArgs(1, 3),
+		Run: func(cmd *cobra.Command, args []string) {
+			schemaFile, remaining, err := resolveSchemaArgs(args)
+			if err != nil {
+				log.Fatalf("error: %v", err)
+			}
+			if len(remaining) == 0 {
+				log.Fatal("missing message name")
+			}
+			messageName := remaining[0]
+
+			input := dataFlag
+			if input == "" {
+				if len(remaining) > 1 {
+					input = remaining[1]
+				} else {
+					input = "-"
+				}
+			}
+
+			binaryData, err := io.ReadData(input, isBase64Flag)
+			if err != nil {
+				log.Fatalf("failed to read input data: %v", err)
+			}
+
+			out, err := e.Decode(context.Background(), schemaFile, messageName, binaryData, versionedFlag)
+			if err != nil {
+				log.Fatalf("failed to decode: %v", err)
+			}
+
+			outputJSON, _ := json.MarshalIndent(out, "", "  ")
+			fmt.Println(string(outputJSON))
+		},
+	}
+	decodeCmd.Flags().StringVarP(&dataFlag, "data", "d", "", "Input data (binary or base64)")
+	decodeCmd.Flags().BoolVarP(&isBase64Flag, "base64", "b", false, "Interpret input data as base64")
+	decodeCmd.Flags().BoolVarP(&versionedFlag, "versioned", "V", false, "Unwrap from UntypedVersionedMessage")
+
+	var outputBase64Flag bool
+	var versionNumFlag int32
+	var generateCmd = &cobra.Command{
+		Use:   "generate [schema-file] [message-name] ([json-data])",
+		Short: "Serialize JSON to binary Protobuf",
+		Args:  cobra.RangeArgs(1, 3),
+		Run: func(cmd *cobra.Command, args []string) {
+			schemaFile, remaining, err := resolveSchemaArgs(args)
+			if err != nil {
+				log.Fatalf("error: %v", err)
+			}
+			if len(remaining) == 0 {
+				log.Fatal("missing message name")
+			}
+			messageName := remaining[0]
+
+			input := dataFlag
+			if input == "" {
+				if len(remaining) > 1 {
+					input = remaining[1]
+				} else {
+					input = "-"
+				}
+			}
+			jsonData, err := io.ReadData(input, false)
+			if err != nil {
+				log.Fatalf("failed to read JSON data: %v", err)
+			}
+
+			var vPtr *int32
+			if cmd.Flags().Changed("versioned") {
+				vPtr = &versionNumFlag
+			}
+
+			binaryData, err := e.Generate(context.Background(), schemaFile, messageName, jsonData, vPtr)
+			if err != nil {
+				log.Fatalf("failed to generate: %v", err)
+			}
+
+			if outputBase64Flag {
+				fmt.Println(base64.StdEncoding.EncodeToString(binaryData))
+			} else {
+				os.Stdout.Write(binaryData)
+			}
+		},
+	}
+	generateCmd.Flags().StringVarP(&dataFlag, "data", "d", "", "Input JSON data")
+	generateCmd.Flags().BoolVarP(&outputBase64Flag, "base64", "b", false, "Output base64 encoded binary")
+	generateCmd.Flags().Int32VarP(&versionNumFlag, "versioned", "V", 0, "Wrap in UntypedVersionedMessage with this version")
+
+	// --- Canton Specialized Commands ---
+
+	var isBase64Canton bool
 	var fingerprintCmd = &cobra.Command{
 		Use:   "fingerprint [public-key-file]",
 		Short: "Compute Canton fingerprint of a public key",
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			input := args[0]
-			data, err := io.ReadData(input, isBase64)
+			data, err := io.ReadData(input, isBase64Canton)
 			if err != nil {
 				log.Fatalf("failed to read public key: %v", err)
 			}
@@ -58,7 +200,7 @@ func main() {
 			fmt.Println(canton.Fingerprint(data))
 		},
 	}
-	fingerprintCmd.Flags().BoolVarP(&isBase64, "base64", "b", false, "Is input base64 encoded")
+	fingerprintCmd.Flags().BoolVarP(&isBase64Canton, "base64", "b", false, "Is input base64 encoded")
 
 	var isRoot bool
 	var rootKeyPath string
@@ -102,16 +244,19 @@ func main() {
 
 			// 3. Build Mapping JSON
 			mapping := map[string]interface{}{
-				"namespace_delegation": map[string]interface{}{
+				"namespaceDelegation": map[string]interface{}{
 					"namespace": fingerprint,
-					"target_key": map[string]interface{}{
-						"format":     info.Format,
-						"public_key": targetData, // Engine.Generate will handle base64 encoding for the JSON
-						"usage":      []string{"SIGNING_KEY_USAGE_NAMESPACE"},
-						"key_spec":   info.KeySpec,
+					"targetKey": map[string]interface{}{
+						"format":    info.Format,
+						"publicKey": targetData, // Engine.Generate will handle base64 encoding for the JSON
+						"usage":     []string{"SIGNING_KEY_USAGE_NAMESPACE"},
+						"keySpec":   info.KeySpec,
 					},
-					"can_sign_all_mappings": map[string]interface{}{},
+					"canSignAllMappings": map[string]interface{}{},
 				},
+			}
+			if isRoot {
+				mapping["namespaceDelegation"].(map[string]interface{})["isRootDelegation"] = true
 			}
 
 			// 4. Build Transaction JSON
@@ -151,7 +296,7 @@ func main() {
 		},
 	}
 
-	var prepPath string
+	var prepFilePath string
 	var signaturePath string
 	var signatureAlgo string
 	var finalOutput string
@@ -165,7 +310,7 @@ func main() {
 		Use:   "delegation",
 		Short: "Assemble a signed namespace delegation transaction",
 		Run: func(cmd *cobra.Command, args []string) {
-			if prepPath == "" || signaturePath == "" || signatureAlgo == "" || finalOutput == "" {
+			if prepFilePath == "" || signaturePath == "" || signatureAlgo == "" || finalOutput == "" {
 				log.Fatal("missing required flags: --prepared-transaction, --signature, --signature-algorithm, --output")
 			}
 
@@ -175,7 +320,7 @@ func main() {
 			}
 
 			// 1. Load Prep Data & Extract Fingerprint
-			prepData, err := os.ReadFile(prepPath)
+			prepData, err := os.ReadFile(prepFilePath)
 			if err != nil {
 				log.Fatalf("failed to read prepared transaction: %v", err)
 			}
@@ -217,10 +362,10 @@ func main() {
 				"transaction": prepData, // Engine.Generate handles []byte to base64
 				"signatures": []interface{}{
 					map[string]interface{}{
-						"format":                 sigMeta.Format,
-						"signature":              sigData,
-						"signed_by":              fingerprint,
-						"signing_algorithm_spec": sigMeta.Algorithm,
+						"format":               sigMeta.Format,
+						"signature":            sigData,
+						"signedBy":             fingerprint,
+						"signingAlgorithmSpec": sigMeta.Algorithm,
 					},
 				},
 				"proposal": false,
@@ -247,16 +392,21 @@ func main() {
 	delegationCmd.Flags().StringVar(&targetKeyPath, "target-key", "", "Path to target public key")
 	delegationCmd.Flags().StringVar(&outputPrefix, "output", "", "Output prefix")
 
-	assembleDelegationCmd.Flags().StringVar(&prepPath, "prepared-transaction", "", "Path to prepared transaction (.prep)")
+	assembleDelegationCmd.Flags().StringVar(&prepFilePath, "prepared-transaction", "", "Path to prepared transaction (.prep)")
 	assembleDelegationCmd.Flags().StringVar(&signaturePath, "signature", "", "Path to signature file")
 	assembleDelegationCmd.Flags().StringVar(&signatureAlgo, "signature-algorithm", "", "Signature algorithm (ed25519, ecdsa256, ecdsa384)")
 	assembleDelegationCmd.Flags().StringVar(&finalOutput, "output", "", "Output path")
 
 	prepareCmd.AddCommand(delegationCmd)
 	assembleCmd.AddCommand(assembleDelegationCmd)
+
+	rootCmd.AddCommand(templateCmd)
+	rootCmd.AddCommand(decodeCmd)
+	rootCmd.AddCommand(generateCmd)
 	rootCmd.AddCommand(fingerprintCmd)
 	rootCmd.AddCommand(prepareCmd)
 	rootCmd.AddCommand(assembleCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
