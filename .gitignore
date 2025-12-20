@@ -8,3 +8,4 @@
 *.hash
 *.canton
 *.sh
+*.sig

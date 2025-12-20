@@ -65,6 +65,34 @@ func InspectPublicKey(data []byte) (*PublicKeyInfo, error) {
 	return info, nil
 }
 
+type SignatureMetadata struct {
+	Algorithm string
+	Format    string
+}
+
+// GetSignatureMetadata maps a signature algorithm name to Canton Protobuf enum strings.
+func GetSignatureMetadata(algo string) (*SignatureMetadata, error) {
+	switch algo {
+	case "ed25519":
+		return &SignatureMetadata{
+			Algorithm: "SIGNING_ALGORITHM_SPEC_ED25519",
+			Format:    "SIGNATURE_FORMAT_CONCAT",
+		}, nil
+	case "ecdsa256":
+		return &SignatureMetadata{
+			Algorithm: "SIGNING_ALGORITHM_SPEC_EC_DSA_SHA_256",
+			Format:    "SIGNATURE_FORMAT_DER",
+		}, nil
+	case "ecdsa384":
+		return &SignatureMetadata{
+			Algorithm: "SIGNING_ALGORITHM_SPEC_EC_DSA_SHA_384",
+			Format:    "SIGNATURE_FORMAT_DER",
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported signature algorithm: %s", algo)
+	}
+}
+
 // Fingerprint computes the Canton fingerprint for a public key.
 // It auto-detects Ed25519 keys to extract the raw 32-byte key material.
 func Fingerprint(data []byte) string {

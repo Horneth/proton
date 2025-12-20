@@ -189,29 +189,45 @@ func (p *Processor) CompressRecursively(ctx context.Context, md protoreflect.Mes
 }
 
 func (p *Processor) compressBytes(ctx context.Context, data interface{}, m *config.Mapping) ([]byte, error) {
-	targetDesc := loader.FindMessage(p.Files, m.TargetType)
-	if targetDesc == nil {
-		return nil, fmt.Errorf("target type %s not found", m.TargetType)
-	}
+	var binaryData []byte
+	var err error
 
-	// 1. Recursively compress the target data
-	finalData, err := p.CompressRecursively(ctx, targetDesc, data)
-	if err != nil {
-		return nil, err
-	}
+	if bytes, ok := data.([]byte); ok {
+		// Data is already binary, use it as is
+		binaryData = bytes
+	} else if str, ok := data.(string); ok {
+		// Data is a string, could be base64-encoded binary
+		if decoded, err := base64.StdEncoding.DecodeString(str); err == nil {
+			binaryData = decoded
+		} else {
+			return nil, fmt.Errorf("failed to decode base64 string for mapped field: %v", err)
+		}
+	} else {
+		targetDesc := loader.FindMessage(p.Files, m.TargetType)
+		if targetDesc == nil {
+			return nil, fmt.Errorf("target type %s not found", m.TargetType)
+		}
 
-	// 2. Marshal to binary
-	jsonData, err := json.Marshal(finalData)
-	if err != nil {
-		return nil, err
-	}
-	targetMsg := dynamicpb.NewMessage(targetDesc)
-	if err := protojson.Unmarshal(jsonData, targetMsg); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON for %s: %v", m.TargetType, err)
-	}
-	binaryData, err := proto.Marshal(targetMsg)
-	if err != nil {
-		return nil, err
+		// 1. Recursively compress the target data
+		var finalData interface{}
+		finalData, err = p.CompressRecursively(ctx, targetDesc, data)
+		if err != nil {
+			return nil, err
+		}
+
+		// 2. Marshal to binary
+		jsonData, err := json.Marshal(finalData)
+		if err != nil {
+			return nil, err
+		}
+		targetMsg := dynamicpb.NewMessage(targetDesc)
+		if err := protojson.Unmarshal(jsonData, targetMsg); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal JSON for %s: %v", m.TargetType, err)
+		}
+		binaryData, err = proto.Marshal(targetMsg)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// 3. Wrap if versioned
@@ -221,12 +237,28 @@ func (p *Processor) compressBytes(ctx context.Context, data interface{}, m *conf
 			return nil, err
 		}
 		wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
-		wrapperMsg := dynamicpb.NewMessage(wrapperDesc)
-		wrapperMsg.Set(wrapperDesc.Fields().ByName("data"), protoreflect.ValueOfBytes(binaryData))
-		wrapperMsg.Set(wrapperDesc.Fields().ByName("version"), protoreflect.ValueOfInt32(m.DefaultVersion))
-		binaryData, err = proto.Marshal(wrapperMsg)
-		if err != nil {
-			return nil, err
+		if wrapperDesc == nil {
+			return nil, fmt.Errorf("wrapper descriptor not found")
+		}
+
+		// Check if it's already wrapped to avoid double wrapping
+		alreadyWrapped := false
+		testMsg := dynamicpb.NewMessage(wrapperDesc)
+		if err := proto.Unmarshal(binaryData, testMsg); err == nil {
+			// Basic check: if it has data and version fields successfully set, it's likely already wrapped
+			if len(testMsg.Get(wrapperDesc.Fields().ByName("data")).Bytes()) > 0 {
+				alreadyWrapped = true
+			}
+		}
+
+		if !alreadyWrapped {
+			wrapperMsg := dynamicpb.NewMessage(wrapperDesc)
+			wrapperMsg.Set(wrapperDesc.Fields().ByName("data"), protoreflect.ValueOfBytes(binaryData))
+			wrapperMsg.Set(wrapperDesc.Fields().ByName("version"), protoreflect.ValueOfInt32(m.DefaultVersion))
+			binaryData, err = proto.Marshal(wrapperMsg)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 
