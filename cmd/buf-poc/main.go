@@ -9,21 +9,16 @@ import (
 	"os"
 
 	"buf-lib-poc/pkg/config"
+	"buf-lib-poc/pkg/engine"
 	"buf-lib-poc/pkg/io"
-	"buf-lib-poc/pkg/loader"
-	"buf-lib-poc/pkg/processor"
-	"buf-lib-poc/pkg/template"
 
 	"github.com/spf13/cobra"
-	"google.golang.org/protobuf/encoding/protojson"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 func main() {
 	var configPath string
-	var cfg *config.Config
+	var e *engine.Engine
+
 	var rootCmd = &cobra.Command{
 		Use:   "buf-poc",
 		Short: "Buf PoC CLI tool",
@@ -35,12 +30,15 @@ func main() {
 					configPath = defaultConfig
 				}
 			}
+			var cfg *config.Config
 			if configPath != "" {
-				c, err := config.LoadConfig(configPath)
-				if err == nil {
-					cfg = c
+				var err error
+				cfg, err = config.LoadConfig(configPath)
+				if err != nil {
+					log.Printf("warning: failed to load config: %v", err)
 				}
 			}
+			e = engine.NewEngine(cfg)
 		},
 	}
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", "", "Path to nesting configuration JSON (defaults to ~/.proto.config.json)")
@@ -49,18 +47,14 @@ func main() {
 	resolveSchemaArgs := func(args []string) (string, []string, error) {
 		envImage := os.Getenv("PROTO_IMAGE")
 		if len(args) > 0 {
-			// Check if first arg is a file that exists
 			if _, err := os.Stat(args[0]); err == nil {
 				return args[0], args[1:], nil
 			}
-			// If it doesn't exist, but we have env var, use env var
 			if envImage != "" {
 				return envImage, args, nil
 			}
 			return "", nil, fmt.Errorf("schema file %s not found and PROTO_IMAGE not set", args[0])
 		}
-
-		// No args provided
 		if envImage != "" {
 			return envImage, nil, nil
 		}
@@ -79,20 +73,13 @@ func main() {
 			if len(remaining) == 0 {
 				log.Fatal("missing message name")
 			}
-			messageName := cfg.ResolveAlias(remaining[0])
+			messageName := remaining[0]
 
-			l := &loader.SchemaLoader{}
-			files, err := l.LoadSchema(context.Background(), schemaFile)
+			tmpl, err := e.Template(context.Background(), schemaFile, messageName)
 			if err != nil {
-				log.Fatalf("failed to load schema: %v", err)
+				log.Fatalf("failed to generate template: %v", err)
 			}
 
-			foundMsg := loader.FindMessage(files, messageName)
-			if foundMsg == nil {
-				log.Fatalf("could not find message: %s", messageName)
-			}
-
-			tmpl := template.GenerateJSONTemplate(foundMsg)
 			templateJSON, _ := json.MarshalIndent(tmpl, "", "  ")
 			fmt.Println(string(templateJSON))
 		},
@@ -114,7 +101,7 @@ func main() {
 			if len(remaining) == 0 {
 				log.Fatal("missing message name")
 			}
-			messageName := cfg.ResolveAlias(remaining[0])
+			messageName := remaining[0]
 
 			input := data
 			if input == "" {
@@ -125,53 +112,17 @@ func main() {
 				}
 			}
 
-			l := &loader.SchemaLoader{}
 			binaryData, err := io.ReadData(input, isBase64)
 			if err != nil {
 				log.Fatalf("failed to read input data: %v", err)
 			}
 
-			if versioned {
-				wrapperFiles, err := l.LoadSchema(context.Background(), "untyped_versioned_message.proto")
-				if err != nil {
-					log.Fatalf("failed to load wrapper schema: %v", err)
-				}
-				wrapperMsgDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
-				wrapperMsg := dynamicpb.NewMessage(wrapperMsgDesc)
-				if err := proto.Unmarshal(binaryData, wrapperMsg); err != nil {
-					log.Fatalf("failed to unmarshal versioned wrapper: %v", err)
-				}
-				binaryData = wrapperMsg.Get(wrapperMsgDesc.Fields().ByName("data")).Bytes()
-			}
-
-			files, err := l.LoadSchema(context.Background(), schemaFile)
+			out, err := e.Decode(context.Background(), schemaFile, messageName, binaryData, versioned)
 			if err != nil {
-				log.Fatalf("failed to load schema: %v", err)
-			}
-			foundMsg := loader.FindMessage(files, messageName)
-			if foundMsg == nil {
-				log.Fatalf("could not find message: %s", messageName)
+				log.Fatalf("failed to decode: %v", err)
 			}
 
-			msg := dynamicpb.NewMessage(foundMsg)
-			if err := proto.Unmarshal(binaryData, msg); err != nil {
-				log.Fatalf("failed to unmarshal binary data: %v", err)
-			}
-
-			var outputJSON []byte
-			if cfg != nil {
-				proc := &processor.Processor{Loader: l, Config: cfg, Files: files}
-				expanded, err := proc.ExpandRecursively(context.Background(), foundMsg, protoreflect.ValueOfMessage(msg))
-				if err != nil {
-					log.Fatalf("failed to expand message: %v", err)
-				}
-				outputJSON, _ = json.MarshalIndent(expanded, "", "  ")
-			} else {
-				outputJSON, err = protojson.Marshal(msg)
-				if err != nil {
-					log.Fatalf("failed to marshal to JSON: %v", err)
-				}
-			}
+			outputJSON, _ := json.MarshalIndent(out, "", "  ")
 			fmt.Println(string(outputJSON))
 		},
 	}
@@ -194,17 +145,7 @@ func main() {
 			if len(remaining) == 0 {
 				log.Fatal("missing message name")
 			}
-			messageName := cfg.ResolveAlias(remaining[0])
-
-			l := &loader.SchemaLoader{}
-			files, err := l.LoadSchema(context.Background(), schemaFile)
-			if err != nil {
-				log.Fatalf("failed to load schema: %v", err)
-			}
-			foundMsg := loader.FindMessage(files, messageName)
-			if foundMsg == nil {
-				log.Fatalf("could not find message: %s", messageName)
-			}
+			messageName := remaining[0]
 
 			input := data
 			if input == "" {
@@ -219,39 +160,14 @@ func main() {
 				log.Fatalf("failed to read JSON data: %v", err)
 			}
 
-			if cfg != nil {
-				var mapData interface{}
-				if err := json.Unmarshal(jsonData, &mapData); err != nil {
-					log.Fatalf("failed to parse input JSON: %v", err)
-				}
-
-				proc := &processor.Processor{Loader: l, Config: cfg, Files: files}
-				compressed, err := proc.CompressRecursively(context.Background(), foundMsg, mapData)
-				if err != nil {
-					log.Fatalf("failed to compress message: %v", err)
-				}
-				jsonData, _ = json.Marshal(compressed)
-			}
-
-			msg := dynamicpb.NewMessage(foundMsg)
-			if err := protojson.Unmarshal(jsonData, msg); err != nil {
-				log.Fatalf("failed to unmarshal JSON: %v", err)
-			}
-			binaryData, err := proto.Marshal(msg)
-			if err != nil {
-				log.Fatalf("failed to marshal to binary: %v", err)
-			}
-
+			var vPtr *int32
 			if cmd.Flags().Changed("versioned") {
-				wrapperFiles, err := l.LoadSchema(context.Background(), "untyped_versioned_message.proto")
-				if err != nil {
-					log.Fatalf("failed to load wrapper schema: %v", err)
-				}
-				wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
-				wrapperMsg := dynamicpb.NewMessage(wrapperDesc)
-				wrapperMsg.Set(wrapperDesc.Fields().ByName("data"), protoreflect.ValueOfBytes(binaryData))
-				wrapperMsg.Set(wrapperDesc.Fields().ByName("version"), protoreflect.ValueOfInt32(versionNum))
-				binaryData, _ = proto.Marshal(wrapperMsg)
+				vPtr = &versionNum
+			}
+
+			binaryData, err := e.Generate(context.Background(), schemaFile, messageName, jsonData, vPtr)
+			if err != nil {
+				log.Fatalf("failed to generate: %v", err)
 			}
 
 			if outputBase64 {
