@@ -5,3 +5,6 @@
 *.prep
 *.der
 *.json
+*.hash
+*.canton
+*.sh

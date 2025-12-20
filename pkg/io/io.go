@@ -37,6 +37,20 @@ func ReadData(input string, isBase64 bool) ([]byte, error) {
 			isBase64 = true
 		}
 		rawData = []byte(input)
+
+		// Smart autodetection: if not explicitly a file/stdin and not already marked as base64,
+		// try decoding it as base64 if it looks like one.
+		if !isBase64 && len(input) > 0 {
+			// Basic heuristic: check if it's long enough and has base64-like characters,
+			// and attempt decoding. If it fails, we treat it as raw text.
+			if decoded, err := base64.StdEncoding.DecodeString(input); err == nil {
+				// To avoid false positives for very short strings (like "root"),
+				// we only auto-decode if it's long (>16 chars) or contains padding "="
+				if len(input) > 16 || strings.HasSuffix(input, "=") {
+					return decoded, nil
+				}
+			}
+		}
 	}
 
 	if isBase64 {

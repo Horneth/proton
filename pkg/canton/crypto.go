@@ -1,11 +1,13 @@
 package canton
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 )
 
 // ComputeHash implements the Canton-specific hashing logic:
@@ -24,6 +26,43 @@ func ComputeHash(data []byte, purpose int) []byte {
 	// Prefix with 0x12 0x20 (multihash header for SHA256)
 	result := append([]byte{0x12, 0x20}, sum...)
 	return result
+}
+
+type PublicKeyInfo struct {
+	KeySpec   string
+	Format    string
+	PublicKey []byte
+}
+
+// InspectPublicKey parses a DER-encoded public key and returns its specification.
+func InspectPublicKey(data []byte) (*PublicKeyInfo, error) {
+	pub, err := x509.ParsePKIXPublicKey(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %v", err)
+	}
+
+	info := &PublicKeyInfo{
+		Format:    "CRYPTO_KEY_FORMAT_DER_X509_SUBJECT_PUBLIC_KEY_INFO",
+		PublicKey: data,
+	}
+
+	switch k := pub.(type) {
+	case ed25519.PublicKey:
+		info.KeySpec = "SIGNING_KEY_SPEC_EC_CURVE25519"
+	case *ecdsa.PublicKey:
+		switch k.Curve.Params().Name {
+		case "P-256":
+			info.KeySpec = "SIGNING_KEY_SPEC_EC_P256"
+		case "P-384":
+			info.KeySpec = "SIGNING_KEY_SPEC_EC_P384"
+		default:
+			return nil, fmt.Errorf("unsupported elliptic curve: %s", k.Curve.Params().Name)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported key type: %T", k)
+	}
+
+	return info, nil
 }
 
 // Fingerprint computes the Canton fingerprint for a public key.
