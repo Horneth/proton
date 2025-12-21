@@ -299,19 +299,15 @@ func main() {
 	var prepFilePath string
 	var signaturePath string
 	var signatureAlgo string
+	var signedBy string
 	var finalOutput string
 
 	var assembleCmd = &cobra.Command{
 		Use:   "assemble",
-		Short: "Assembly commands for topology transactions",
-	}
-
-	var assembleDelegationCmd = &cobra.Command{
-		Use:   "delegation",
-		Short: "Assemble a signed namespace delegation transaction",
+		Short: "Assemble a signed topology transaction",
 		Run: func(cmd *cobra.Command, args []string) {
-			if prepFilePath == "" || signaturePath == "" || signatureAlgo == "" || finalOutput == "" {
-				log.Fatal("missing required flags: --prepared-transaction, --signature, --signature-algorithm, --output")
+			if prepFilePath == "" || signaturePath == "" || signatureAlgo == "" || signedBy == "" || finalOutput == "" {
+				log.Fatal("missing required flags: --prepared-transaction, --signature, --signature-algorithm, --signed-by, --output")
 			}
 
 			schemaFile := os.Getenv("PROTO_IMAGE")
@@ -319,30 +315,10 @@ func main() {
 				log.Fatal("PROTO_IMAGE must be set to point to Canton topology image")
 			}
 
-			// 1. Load Prep Data & Extract Fingerprint
+			// 1. Load Prep Data
 			prepData, err := os.ReadFile(prepFilePath)
 			if err != nil {
 				log.Fatalf("failed to read prepared transaction: %v", err)
-			}
-
-			// Decode as versioned to get the inner data
-			out, err := e.Decode(context.Background(), schemaFile, "com.digitalasset.canton.protocol.v30.TopologyTransaction", prepData, true)
-			if err != nil {
-				log.Fatalf("failed to decode prepared transaction: %v", err)
-			}
-
-			// Extract fingerprint
-			mapping, ok := out.(map[string]interface{})["mapping"].(map[string]interface{})
-			if !ok {
-				log.Fatal("invalid transaction structure: missing mapping")
-			}
-			nsDelegation, ok := mapping["namespaceDelegation"].(map[string]interface{})
-			if !ok {
-				log.Fatal("invalid transaction structure: missing namespaceDelegation")
-			}
-			fingerprint, _ := nsDelegation["namespace"].(string)
-			if fingerprint == "" {
-				log.Fatal("invalid transaction structure: missing namespace")
 			}
 
 			// 2. Load Signature
@@ -364,7 +340,7 @@ func main() {
 					map[string]interface{}{
 						"format":               sigMeta.Format,
 						"signature":            sigData,
-						"signedBy":             fingerprint,
+						"signedBy":             signedBy,
 						"signingAlgorithmSpec": sigMeta.Algorithm,
 					},
 				},
@@ -392,13 +368,13 @@ func main() {
 	delegationCmd.Flags().StringVar(&targetKeyPath, "target-key", "", "Path to target public key")
 	delegationCmd.Flags().StringVar(&outputPrefix, "output", "", "Output prefix")
 
-	assembleDelegationCmd.Flags().StringVar(&prepFilePath, "prepared-transaction", "", "Path to prepared transaction (.prep)")
-	assembleDelegationCmd.Flags().StringVar(&signaturePath, "signature", "", "Path to signature file")
-	assembleDelegationCmd.Flags().StringVar(&signatureAlgo, "signature-algorithm", "", "Signature algorithm (ed25519, ecdsa256, ecdsa384)")
-	assembleDelegationCmd.Flags().StringVar(&finalOutput, "output", "", "Output path")
+	assembleCmd.Flags().StringVar(&prepFilePath, "prepared-transaction", "", "Path to prepared transaction (.prep)")
+	assembleCmd.Flags().StringVar(&signaturePath, "signature", "", "Path to signature file")
+	assembleCmd.Flags().StringVar(&signatureAlgo, "signature-algorithm", "", "Signature algorithm (ed25519, ecdsa256, ecdsa384)")
+	assembleCmd.Flags().StringVar(&signedBy, "signed-by", "", "Fingerprint of the signer")
+	assembleCmd.Flags().StringVar(&finalOutput, "output", "", "Output path")
 
 	prepareCmd.AddCommand(delegationCmd)
-	assembleCmd.AddCommand(assembleDelegationCmd)
 
 	rootCmd.AddCommand(templateCmd)
 	rootCmd.AddCommand(decodeCmd)
