@@ -11,21 +11,21 @@ openssl ecparam -name prime256v1 -genkey -noout -outform DER -out "$PRIVATE_KEY"
 openssl ec -inform der -in "$PRIVATE_KEY" -pubout -outform der -out "$PUBLIC_KEY" 2> /dev/null
 
 # 2. Get signer fingerprint
-FINGERPRINT=$(./bin/proton fingerprint "$PUBLIC_KEY")
+FINGERPRINT=$(./bin/proton crypto fingerprint "$PUBLIC_KEY")
 echo "Signer Fingerprint: $FINGERPRINT"
 
 # 3. Get intermediate key
 INTERMEDIATE_KEY=$(
-    ./bin/proton decode SigningPublicKey @intermediate_pub.canton --versioned | jq -r .publicKey
+    ./bin/proton proto decode SigningPublicKey @intermediate_pub.canton --versioned | jq -r .publicKey
 )
 
 # 4. Prepare transactions
-./bin/proton prepare delegation \
+./bin/proton canton topology prepare delegation \
   --root \
   --root-key @$PUBLIC_KEY \
   --output ./root-cert
 
-./bin/proton prepare delegation \
+./bin/proton canton topology prepare delegation \
   --root-key @$PUBLIC_KEY \
   --target-key $INTERMEDIATE_KEY \
   --output ./intermediate-cert
@@ -35,14 +35,14 @@ openssl pkeyutl -rawin -inkey "$PRIVATE_KEY" -keyform DER -sign < "root-cert.has
 openssl pkeyutl -rawin -inkey "$PRIVATE_KEY" -keyform DER -sign < "intermediate-cert.hash" > "intermediate-cert.sig"
 
 # 6. Assemble with generic command
-./bin/proton assemble \
+./bin/proton canton topology assemble \
   --prepared-transaction ./root-cert.prep \
   --signature @./root-cert.sig \
   --signature-algorithm ecdsa256 \
   --signed-by "$FINGERPRINT" \
   --output ./root-cert.cert
 
-./bin/proton assemble \
+./bin/proton canton topology assemble \
   --prepared-transaction ./intermediate-cert.prep \
   --signature @./intermediate-cert.sig \
   --signature-algorithm ecdsa256 \
