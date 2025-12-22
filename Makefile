@@ -16,6 +16,14 @@ build:
 	go build -o $(BUILD_DIR)/$(BIN_NAME) ./cmd/proton
 	@echo "Done. Binary is in $(BUILD_DIR)/"
 
+test: build
+	@if [ -z "$$PROTO_IMAGE" ]; then \
+		echo "ERROR: PROTO_IMAGE must be set for engine and integration tests."; \
+		exit 1; \
+	fi
+	@echo "Running all tests..."
+	go test -v ./...
+
 clean:
 	@echo "Cleaning up..."
 	rm -rf $(BUILD_DIR)

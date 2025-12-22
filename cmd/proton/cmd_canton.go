@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"buf-lib-poc/pkg/canton"
 	"buf-lib-poc/pkg/io"
+	"buf-lib-poc/pkg/patch"
 
 	"github.com/spf13/cobra"
 )
@@ -23,6 +25,9 @@ var (
 	signatureAlgo string
 	signedBy      string
 	finalOutput   string
+	revokeFlag    bool
+	serialFlag    int64
+	restrictions  string
 )
 
 func initCantonCommands(cantonCmd *cobra.Command) {
@@ -61,33 +66,44 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 				log.Fatalf("failed to inspect target key: %v", err)
 			}
 
-			// 3. Build Mapping JSON
-			mapping := map[string]interface{}{
-				"namespaceDelegation": map[string]interface{}{
-					"namespace": fingerprint,
-					"targetKey": map[string]interface{}{
-						"format":    info.Format,
-						"publicKey": targetData,
-						"usage":     []string{"SIGNING_KEY_USAGE_NAMESPACE"},
-						"keySpec":   info.KeySpec,
-					},
-					"canSignAllMappings": map[string]interface{}{},
-				},
+			// 3. Build Transaction JSON using Patching Logic
+			tx := make(map[string]interface{})
+
+			// Operation & Serial
+			op := "TOPOLOGY_CHANGE_OP_ADD_REPLACE"
+			if revokeFlag {
+				op = "TOPOLOGY_CHANGE_OP_REMOVE"
 			}
+			patch.Set(tx, "operation", op)
+			patch.Set(tx, "serial", serialFlag)
+
+			// Shared Delegation Fields
+			prefix := "mapping.namespaceDelegation"
+			patch.Set(tx, prefix+".namespace", fingerprint)
+			patch.Set(tx, prefix+".targetKey.format", info.Format)
+			patch.Set(tx, prefix+".targetKey.publicKey", targetData)
+			patch.Set(tx, prefix+".targetKey.usage", []string{"SIGNING_KEY_USAGE_NAMESPACE"})
+			patch.Set(tx, prefix+".targetKey.keySpec", info.KeySpec)
+
 			if isRoot {
-				mapping["namespaceDelegation"].(map[string]interface{})["isRootDelegation"] = true
+				patch.Set(tx, prefix+".isRootDelegation", true)
 			}
 
-			// 4. Build Transaction JSON
-			tx := map[string]interface{}{
-				"operation": "TOPOLOGY_CHANGE_OP_ADD_REPLACE",
-				"serial":    1,
-				"mapping":   mapping,
+			// Restrictions
+			switch restrictions {
+			case "all":
+				patch.Set(tx, prefix+".canSignAllMappings", map[string]interface{}{})
+			case "all-but-delegation":
+				patch.Set(tx, prefix+".canSignAllButNamespaceDelegations", map[string]interface{}{})
+			default:
+				// Comma-separated list of mapping codes
+				codes := strings.Split(restrictions, ",")
+				patch.Set(tx, prefix+".canSignSpecificMapings.mappings", codes)
 			}
 
 			jsonData, _ := json.Marshal(tx)
 
-			// 5. Generate Binary Prep File
+			// 4. Generate Binary Prep File
 			schemaFile := os.Getenv("PROTO_IMAGE")
 			if schemaFile == "" {
 				log.Fatal("PROTO_IMAGE must be set to point to Canton topology image")
@@ -105,7 +121,7 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 			}
 			fmt.Printf("Namespace delegation Transaction written to %s\n", prepPath)
 
-			// 6. Compute and Write Hash
+			// 5. Compute and Write Hash
 			hash := canton.ComputeHash(binaryData, 11)
 			hashPath := outputPrefix + ".hash"
 			if err := os.WriteFile(hashPath, hash, 0644); err != nil {
@@ -119,6 +135,9 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 	delegationCmd.Flags().StringVar(&rootKeyPath, "root-key", "", "Path to root public key")
 	delegationCmd.Flags().StringVar(&targetKeyPath, "target-key", "", "Path to target public key")
 	delegationCmd.Flags().StringVar(&outputPrefix, "output", "", "Output prefix")
+	delegationCmd.Flags().BoolVar(&revokeFlag, "revoke", false, "Revoke the transaction (operation = REMOVE)")
+	delegationCmd.Flags().Int64Var(&serialFlag, "serial", 1, "Transaction serial number")
+	delegationCmd.Flags().StringVar(&restrictions, "restrictions", "all", "Signing restrictions (all, all-but-delegation, or comma-separated mapping codes)")
 
 	var prepareCmd = &cobra.Command{
 		Use:   "prepare",
