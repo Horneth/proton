@@ -1,0 +1,16 @@
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: buf-lib-poc/pkg/daml/proto
+  override:
+    GO_PACKAGE:
+      google/rpc/status.proto: google.golang.org/genproto/googleapis/rpc/status
+      google/rpc/error_details.proto: google.golang.org/genproto/googleapis/rpc/errdetails
+plugins:
+  - plugin: go
+    out: pkg/daml/proto
+    opt: paths=source_relative
+  - plugin: go-grpc
+    out: pkg/daml/proto
+    opt: paths=source_relative

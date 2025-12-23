@@ -63,6 +63,7 @@ func main() {
 	initProtoCommands(protoCmd)
 	initCantonCommands(cantonCmd)
 	initCryptoCommands(cryptoCmd)
+	initDamlCommands(rootCmd)
 
 	// --- Add to Root ---
 	rootCmd.AddCommand(protoCmd)
