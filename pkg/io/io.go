@@ -67,3 +67,11 @@ func ReadData(input string, isBase64 bool) ([]byte, error) {
 
 	return rawData, nil
 }
+
+// EncodeData encodes binary data to string (optionally base64).
+func EncodeData(data []byte, asBase64 bool) string {
+	if asBase64 {
+		return base64.StdEncoding.EncodeToString(data)
+	}
+	return string(data)
+}

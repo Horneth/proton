@@ -3,6 +3,7 @@ package canton
 import (
 	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/binary"
@@ -116,4 +117,72 @@ func Fingerprint(data []byte) string {
 	// 12 is the hash purpose for public key fingerprints
 	hash := ComputeHash(keyData, 12)
 	return hex.EncodeToString(hash)
+}
+
+// VerifySignature verifies a signature against a message and public key.
+// VerifySignature verifies a signature against a message and public key.
+func VerifySignature(message, signature, publicKeyData []byte, algoSpec string) (bool, error) {
+	pub, err := x509.ParsePKIXPublicKey(publicKeyData)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse public key: %v", err)
+	}
+
+	switch algoSpec {
+	case "SIGNING_ALGORITHM_SPEC_ED25519":
+		edPub, ok := pub.(ed25519.PublicKey)
+		if !ok {
+			return false, fmt.Errorf("not an Ed25519 public key")
+		}
+		return ed25519.Verify(edPub, message, signature), nil
+
+	case "SIGNING_ALGORITHM_SPEC_EC_DSA_SHA_256", "SIGNING_ALGORITHM_SPEC_EC_DSA_SHA_384":
+		ecPub, ok := pub.(*ecdsa.PublicKey)
+		if !ok {
+			return false, fmt.Errorf("not an ECDSA public key")
+		}
+		// Hash the message (which is likely the Canton multihash) to ensure it fits the curve order
+		hash := sha256.Sum256(message)
+		return ecdsa.VerifyASN1(ecPub, hash[:], signature), nil
+
+	default:
+		return false, fmt.Errorf("unsupported signing algorithm spec: %s", algoSpec)
+	}
+}
+
+// Sign signs a message using a private key (helper for testing).
+func Sign(message, privateKeyData []byte, algo string) ([]byte, error) {
+	switch algo {
+	case "ed25519":
+		if len(privateKeyData) == 32 {
+			priv := ed25519.NewKeyFromSeed(privateKeyData)
+			return ed25519.Sign(priv, message), nil
+		} else if len(privateKeyData) == 64 {
+			return ed25519.Sign(ed25519.PrivateKey(privateKeyData), message), nil
+		}
+		priv, err := x509.ParsePKCS8PrivateKey(privateKeyData)
+		if err == nil {
+			if edPriv, ok := priv.(ed25519.PrivateKey); ok {
+				return ed25519.Sign(edPriv, message), nil
+			}
+		}
+		return nil, fmt.Errorf("invalid ed25519 private key data")
+	case "ecdsa256", "ecdsa384":
+		priv, err := x509.ParseECPrivateKey(privateKeyData)
+		if err != nil {
+			p8, err2 := x509.ParsePKCS8PrivateKey(privateKeyData)
+			if err2 != nil {
+				return nil, fmt.Errorf("failed to parse ECDSA private key: %v", err)
+			}
+			var ok bool
+			priv, ok = p8.(*ecdsa.PrivateKey)
+			if !ok {
+				return nil, fmt.Errorf("not an ECDSA private key in PKCS8")
+			}
+		}
+		// Hash the message (which is likely the Canton multihash) to ensure it fits the curve order
+		hash := sha256.Sum256(message)
+		return ecdsa.SignASN1(rand.Reader, priv, hash[:])
+	default:
+		return nil, fmt.Errorf("unsupported signing algorithm: %s", algo)
+	}
 }

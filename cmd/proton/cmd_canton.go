@@ -10,9 +10,12 @@ import (
 
 	"buf-lib-poc/pkg/canton"
 	"buf-lib-poc/pkg/io"
+	"buf-lib-poc/pkg/loader"
 	"buf-lib-poc/pkg/patch"
 
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 var (
@@ -28,6 +31,8 @@ var (
 	revokeFlag    bool
 	serialFlag    int64
 	restrictions  string
+	inputPath     string
+	pubKeyPaths   []string
 )
 
 func initCantonCommands(cantonCmd *cobra.Command) {
@@ -84,10 +89,6 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 			patch.Set(tx, prefix+".targetKey.publicKey", targetData)
 			patch.Set(tx, prefix+".targetKey.usage", []string{"SIGNING_KEY_USAGE_NAMESPACE"})
 			patch.Set(tx, prefix+".targetKey.keySpec", info.KeySpec)
-
-			if isRoot {
-				patch.Set(tx, prefix+".isRootDelegation", true)
-			}
 
 			// Restrictions
 			switch restrictions {
@@ -211,8 +212,136 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 	assembleCmd.Flags().StringVar(&signedBy, "signed-by", "", "Fingerprint of the signer")
 	assembleCmd.Flags().StringVar(&finalOutput, "output", "", "Output path")
 
+	var verifyCmd = &cobra.Command{
+		Use:   "verify",
+		Short: "Verify signatures in a SignedTopologyTransaction",
+		Run: func(cmd *cobra.Command, args []string) {
+			if inputPath == "" || len(pubKeyPaths) == 0 {
+				log.Fatal("missing required flags: --input, --public-key")
+			}
+
+			schemaFile := os.Getenv("PROTO_IMAGE")
+			if schemaFile == "" {
+				log.Fatal("PROTO_IMAGE must be set to point to Canton topology image")
+			}
+
+			// 1. Load Public Keys and compute fingerprints
+			keys := make(map[string][]byte)
+			for _, p := range pubKeyPaths {
+				data, err := io.ReadData(p, false)
+				if err != nil {
+					log.Fatalf("failed to read public key %s: %v", p, err)
+				}
+				fp := canton.Fingerprint(data)
+				keys[fp] = data
+				fmt.Printf("Loaded key for fingerprint: %s\n", fp)
+			}
+
+			inputData, err := os.ReadFile(inputPath)
+			if err != nil {
+				log.Fatalf("failed to read input file: %v", err)
+			}
+
+			// 2. Handle Version Wrapping
+			// Try to unwrap as UntypedVersionedMessage
+			wrapperFiles, err := e.Loader.LoadSchema(context.Background(), "untyped_versioned_message.proto")
+			if err == nil {
+				wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
+				if wrapperDesc != nil {
+					wrapperMsg := dynamicpb.NewMessage(wrapperDesc)
+					if err := proto.Unmarshal(inputData, wrapperMsg); err == nil {
+						// Check if data field is present and non-empty
+						innerData := wrapperMsg.Get(wrapperDesc.Fields().ByName("data")).Bytes()
+						if len(innerData) > 0 {
+							// It was a valid wrapper, use inner data
+							inputData = innerData
+						}
+					}
+				}
+			}
+
+			// 3. Load Schema and SignedTopologyTransaction
+			files, err := e.Loader.LoadSchema(context.Background(), schemaFile)
+			if err != nil {
+				log.Fatalf("failed to load schema: %v", err)
+			}
+			foundMsg := loader.FindMessage(files, "com.digitalasset.canton.protocol.v30.SignedTopologyTransaction")
+			if foundMsg == nil {
+				log.Fatal("could not find SignedTopologyTransaction in schema")
+			}
+
+			// 4. Unmarshal SignedTopologyTransaction
+			// Crucial: Use dynamicpb to preserve raw bytes, NO recursive expansion
+			signedTx := dynamicpb.NewMessage(foundMsg)
+			if err := proto.Unmarshal(inputData, signedTx); err != nil {
+				log.Fatalf("failed to unmarshal SignedTopologyTransaction: %v", err)
+			}
+
+			// 5. Extract Transaction Bytes & Compute Hash
+			txField := foundMsg.Fields().ByName("transaction")
+			rawTx := signedTx.Get(txField).Bytes()
+			if len(rawTx) == 0 {
+				log.Fatal("transaction field is empty")
+			}
+
+			// Canton Hash Purpose 11 = Topology Transaction
+			txHash := canton.ComputeHash(rawTx, 11)
+			fmt.Printf("Computed transaction hash: %x\n", txHash)
+
+			// 6. Verify Signatures
+			sigField := foundMsg.Fields().ByName("signatures")
+			sigsList := signedTx.Get(sigField).List()
+
+			allValid := true
+			for i := 0; i < sigsList.Len(); i++ {
+				sigVal := sigsList.Get(i).Message()
+				sigDesc := sigVal.Descriptor()
+
+				fp := sigVal.Get(sigDesc.Fields().ByName("signed_by")).String()
+				// Handle both snake_case and camelCase for robustness, though standard should be one.
+				if fp == "" {
+					// try camelCase just in case dynamicpb behaves oddly
+					fp = sigVal.Get(sigDesc.Fields().ByName("signedBy")).String()
+				}
+
+				algoEnumVal := sigVal.Get(sigDesc.Fields().ByName("signing_algorithm_spec")).Enum()
+				// if default 0, might look empty? UNSPECIFIED = 0.
+
+				algoName := string(sigDesc.Fields().ByName("signing_algorithm_spec").Enum().Values().ByNumber(algoEnumVal).Name())
+
+				sigData := sigVal.Get(sigDesc.Fields().ByName("signature")).Bytes()
+
+				fmt.Printf("Checking signature %d by %s (%s)...\n", i, fp, algoName)
+				pubKey, ok := keys[fp]
+				if !ok {
+					fmt.Printf("  WARNING: Public key for fingerprint %s not provided\n", fp)
+					allValid = false
+					continue
+				}
+
+				valid, err := canton.VerifySignature(txHash, sigData, pubKey, algoName)
+				if err != nil {
+					fmt.Printf("  ERROR: %v\n", err)
+					allValid = false
+				} else if valid {
+					fmt.Printf("  SUCCESS: Signature is valid\n")
+				} else {
+					fmt.Printf("  FAILURE: Signature is INVALID\n")
+					allValid = false
+				}
+			}
+
+			if !allValid {
+				os.Exit(1)
+			}
+		},
+	}
+	verifyCmd.Flags().StringVar(&inputPath, "input", "", "Path to SignedTopologyTransaction binary")
+	verifyCmd.Flags().StringSliceVar(&pubKeyPaths, "public-key", nil, "Path(s) to public key(s) for verification")
+
 	topologyCmd.AddCommand(prepareCmd)
 	topologyCmd.AddCommand(assembleCmd)
+	topologyCmd.AddCommand(verifyCmd)
 
 	cantonCmd.AddCommand(topologyCmd)
 }

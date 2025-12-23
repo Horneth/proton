@@ -11,7 +11,7 @@ openssl ecparam -name prime256v1 -genkey -noout -outform DER -out "$PRIVATE_KEY"
 openssl ec -inform der -in "$PRIVATE_KEY" -pubout -outform der -out "$PUBLIC_KEY" 2> /dev/null
 
 # 2. Get signer fingerprint
-FINGERPRINT=$(./bin/proton crypto fingerprint "$PUBLIC_KEY")
+FINGERPRINT=$(./bin/proton crypto fingerprint "@$PUBLIC_KEY")
 echo "Signer Fingerprint: $FINGERPRINT"
 
 # 3. Get intermediate key
