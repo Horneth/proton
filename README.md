@@ -1,5 +1,7 @@
 # Proton: Protobuf Canton Toolkit
 
+![Proton](./img/logo.png)
+
 Proton is a versatile Go-based CLI tool designed for working with Protobuf messages, specifically tailored for Canton and Daml ecosystems. It leverages `buf` libraries to provide generic schema-driven operations alongside specialized logic for Canton topology transactions and Daml transaction hashing.
 
 ## Features
