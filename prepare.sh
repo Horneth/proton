@@ -36,14 +36,14 @@ openssl pkeyutl -rawin -inkey "$PRIVATE_KEY" -keyform DER -sign < "intermediate-
 
 # 6. Assemble with generic command
 ./bin/proton canton topology assemble \
-  --prepared-transaction ./root-cert.prep \
+  --prepared-transaction @./root-cert.prep \
   --signature @./root-cert.sig \
   --signature-algorithm ecdsa256 \
   --signed-by "$FINGERPRINT" \
   --output ./root-cert.cert
 
 ./bin/proton canton topology assemble \
-  --prepared-transaction ./intermediate-cert.prep \
+  --prepared-transaction @./intermediate-cert.prep \
   --signature @./intermediate-cert.sig \
   --signature-algorithm ecdsa256 \
   --signed-by "$FINGERPRINT" \

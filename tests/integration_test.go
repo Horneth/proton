@@ -127,7 +127,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 
 	certPath := filepath.Join(tmpDir, "tx.cert")
 	assembleOut, err := runCLI(binPath, repoRoot, "canton", "topology", "assemble",
-		"--prepared-transaction", prepPrefix+".prep",
+		"--prepared-transaction", "@"+prepPrefix+".prep",
 		"--signature", sig,
 		"--signature-algorithm", "ed25519",
 		"--signed-by", fp,
@@ -139,7 +139,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 
 	// 5. Verify
 	out, err := runCLI(binPath, repoRoot, "canton", "topology", "verify",
-		"--input", certPath,
+		"--input", "@"+certPath,
 		"--public-key", "@"+pubPath)
 	if err != nil {
 		t.Fatalf("verify failed: %v\nOutput: %s", err, out)
@@ -158,7 +158,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 	os.WriteFile(wrongPubPath, wrongPubDer, 0644)
 
 	out, err = runCLI(binPath, repoRoot, "canton", "topology", "verify",
-		"--input", certPath,
+		"--input", "@"+certPath,
 		"--public-key", "@"+wrongPubPath)
 
 	// Should fail (exit 1)
@@ -220,7 +220,7 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 
 	certPath := filepath.Join(tmpDir, "tx.cert")
 	assembleOut, err := runCLI(binPath, repoRoot, "canton", "topology", "assemble",
-		"--prepared-transaction", prepPrefix+".prep",
+		"--prepared-transaction", "@"+prepPrefix+".prep",
 		"--signature", sig,
 		"--signature-algorithm", "ecdsa256",
 		"--signed-by", fp,
@@ -232,7 +232,7 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 
 	// 5. Verify
 	out, err := runCLI(binPath, repoRoot, "canton", "topology", "verify",
-		"--input", certPath,
+		"--input", "@"+certPath,
 		"--public-key", "@"+pubPath)
 	if err != nil {
 		t.Fatalf("verify failed: %v\nOutput: %s", err, out)

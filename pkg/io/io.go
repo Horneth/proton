@@ -8,12 +8,10 @@ import (
 	"strings"
 )
 
-// ReadData reads data from various sources:
-// - "-" : Read from Stdin (raw)
-// - "@path" : Read from file at path (raw)
-// - "base64:..." : Decode base64 literal (optional prefix)
-// - "string" : Treat as literal data
-// If isBase64 is true, the raw bytes read from the source are decoded as base64.
+// ReadData reads data from a string or file path.
+// If input starts with '@', the rest is treated as a file path.
+// If input matches a file on disk but is missing '@', it returns an error.
+// Otherwise, the input is treated as literal data.
 func ReadData(input string, isBase64 bool) ([]byte, error) {
 	var rawData []byte
 	var err error
@@ -31,6 +29,11 @@ func ReadData(input string, isBase64 bool) ([]byte, error) {
 			return nil, fmt.Errorf("failed to read file %s: %v", path, err)
 		}
 	default:
+		// Check if it looks like a file but user forgot '@'
+		if info, fsErr := os.Stat(input); fsErr == nil && !info.IsDir() {
+			return nil, fmt.Errorf("input %q matches a file on disk but is missing '@' prefix. To read from file, use '@%s'", input, input)
+		}
+
 		// Remove "base64:" prefix if present for convenience
 		if strings.HasPrefix(input, "base64:") {
 			input = strings.TrimPrefix(input, "base64:")

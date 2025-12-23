@@ -160,7 +160,7 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 			}
 
 			// 1. Load Prep Data
-			prepData, err := os.ReadFile(prepFilePath)
+			prepData, err := io.ReadData(prepFilePath, false)
 			if err != nil {
 				log.Fatalf("failed to read prepared transaction: %v", err)
 			}
@@ -237,7 +237,7 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 				fmt.Printf("Loaded key for fingerprint: %s\n", fp)
 			}
 
-			inputData, err := os.ReadFile(inputPath)
+			inputData, err := io.ReadData(inputPath, false)
 			if err != nil {
 				log.Fatalf("failed to read input file: %v", err)
 			}
