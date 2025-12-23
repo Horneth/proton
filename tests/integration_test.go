@@ -14,6 +14,34 @@ import (
 	"testing"
 )
 
+const testConfigJSON = `{
+    "aliases": {
+        "SignedTopologyTransaction": "com.digitalasset.canton.protocol.v30.SignedTopologyTransaction",
+        "TopologyTransaction": "com.digitalasset.canton.protocol.v30.TopologyTransaction",
+        "SigningPublicKey": "com.digitalasset.canton.crypto.v30.SigningPublicKey",
+	"PreparedTransaction": "com.daml.ledger.api.v2.interactive.PreparedTransaction"
+    },
+    "mappings": [
+        {
+            "type": "com.digitalasset.canton.protocol.v30.SignedTopologyTransaction",
+            "field": "transaction",
+            "target_type": "com.digitalasset.canton.protocol.v30.TopologyTransaction",
+            "versioned": true,
+            "default_version": 30
+        }
+    ]
+}
+`
+
+func setupTestConfig(t *testing.T) string {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "config.json")
+	if err := os.WriteFile(configPath, []byte(testConfigJSON), 0644); err != nil {
+		t.Fatalf("failed to write test config: %v", err)
+	}
+	return configPath
+}
+
 func TestCLI_BasicFlow(t *testing.T) {
 	imagePath := os.Getenv("PROTO_IMAGE")
 	if imagePath == "" {
@@ -30,8 +58,11 @@ func TestCLI_BasicFlow(t *testing.T) {
 		t.Fatalf("failed to build binary: %v", err)
 	}
 
+	// 1.5. Prepare config
+	configPath := setupTestConfig(t)
+
 	// 2. Test template
-	out, err := runCLI(binPath, repoRoot, "proto", "template", "TopologyTransaction")
+	out, err := runCLI(configPath, binPath, repoRoot, "proto", "template", "TopologyTransaction")
 	if err != nil {
 		t.Fatalf("proto template failed: %v\nOutput: %s", err, out)
 	}
@@ -40,7 +71,7 @@ func TestCLI_BasicFlow(t *testing.T) {
 	}
 
 	// 3. Test generate --set
-	out, err = runCLI(binPath, repoRoot, "proto", "generate", "TopologyTransaction",
+	out, err = runCLI(configPath, binPath, repoRoot, "proto", "generate", "TopologyTransaction",
 		"--set", "serial=99",
 		"--set", "operation=TOPOLOGY_CHANGE_OP_REMOVE",
 		"--versioned", "30",
@@ -51,7 +82,7 @@ func TestCLI_BasicFlow(t *testing.T) {
 	b64Data := strings.TrimSpace(out)
 
 	// 4. Test decode
-	out, err = runCLIWithStdin(binPath, repoRoot, b64Data, "proto", "decode", "TopologyTransaction", "-", "--versioned", "--base64")
+	out, err = runCLIWithStdin(configPath, binPath, repoRoot, b64Data, "proto", "decode", "TopologyTransaction", "-", "--versioned", "--base64")
 	if err != nil {
 		t.Fatalf("proto decode failed: %v\nOutput: %s", err, out)
 	}
@@ -68,7 +99,7 @@ func TestCLI_BasicFlow(t *testing.T) {
 	pubBytes, _ := x509.MarshalPKIXPublicKey(&priv.PublicKey)
 	os.WriteFile(keyPath, pubBytes, 0644)
 
-	out, err = runCLI(binPath, repoRoot, "canton", "topology", "prepare", "delegation",
+	out, err = runCLI(configPath, binPath, repoRoot, "canton", "topology", "prepare", "delegation",
 		"--root", "--root-key", "@"+keyPath, "--output", filepath.Join(tempDir, "test-prep"))
 	if err != nil {
 		t.Fatalf("canton prepare failed: %v\nOutput: %s", err, out)
@@ -94,6 +125,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 		t.Fatalf("failed to build binary: %v", err)
 	}
 
+	configPath := setupTestConfig(t)
 	tmpDir := t.TempDir()
 
 	// 1. Generate an Ed25519 key pair
@@ -113,7 +145,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 
 	// 2. Prepare Transaction
 	prepPrefix := filepath.Join(tmpDir, "tx")
-	_, err := runCLI(binPath, repoRoot, "canton", "topology", "prepare", "delegation",
+	_, err := runCLI(configPath, binPath, repoRoot, "canton", "topology", "prepare", "delegation",
 		"--root", "--root-key", "@"+pubPath, "--output", prepPrefix)
 	if err != nil {
 		t.Fatalf("prepare failed: %v", err)
@@ -121,18 +153,18 @@ func TestCLI_VerifySignature(t *testing.T) {
 
 	// 3. Sign the Hash
 	hashPath := prepPrefix + ".hash"
-	sig, err := runCLI(binPath, repoRoot, "crypto", "sign", "@"+privPath, "@"+hashPath, "--algo", "ed25519")
+	sig, err := runCLI(configPath, binPath, repoRoot, "crypto", "sign", "@"+privPath, "@"+hashPath, "--algo", "ed25519")
 	if err != nil {
 		t.Fatalf("sign failed: %v\nOutput: %s", err, sig)
 	}
 	sig = strings.TrimSpace(sig)
 
 	// 4. Assemble
-	fp, _ := runCLI(binPath, repoRoot, "crypto", "fingerprint", "@"+pubPath)
+	fp, _ := runCLI(configPath, binPath, repoRoot, "crypto", "fingerprint", "@"+pubPath)
 	fp = strings.TrimSpace(fp)
 
 	certPath := filepath.Join(tmpDir, "tx.cert")
-	assembleOut, err := runCLI(binPath, repoRoot, "canton", "topology", "assemble",
+	assembleOut, err := runCLI(configPath, binPath, repoRoot, "canton", "topology", "assemble",
 		"--prepared-transaction", "@"+prepPrefix+".prep",
 		"--signature", sig,
 		"--signature-algorithm", "ed25519",
@@ -144,7 +176,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 	}
 
 	// 5. Verify
-	out, err := runCLI(binPath, repoRoot, "canton", "topology", "verify",
+	out, err := runCLI(configPath, binPath, repoRoot, "canton", "topology", "verify",
 		"--input", "@"+certPath,
 		"--public-key", "@"+pubPath)
 	if err != nil {
@@ -163,7 +195,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 	wrongPubPath := filepath.Join(tmpDir, "wrong.pub")
 	os.WriteFile(wrongPubPath, wrongPubDer, 0644)
 
-	_, err = runCLI(binPath, repoRoot, "canton", "topology", "verify",
+	_, err = runCLI(configPath, binPath, repoRoot, "canton", "topology", "verify",
 		"--input", "@"+certPath,
 		"--public-key", "@"+wrongPubPath)
 
@@ -189,6 +221,7 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 		t.Fatalf("failed to build binary: %v", err)
 	}
 
+	configPath := setupTestConfig(t)
 	tmpDir := t.TempDir()
 
 	// 1. Generate ECDSA P-256 key pair
@@ -206,7 +239,7 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 
 	// 2. Prepare Transaction
 	prepPrefix := filepath.Join(tmpDir, "tx")
-	_, err = runCLI(binPath, repoRoot, "canton", "topology", "prepare", "delegation",
+	_, err = runCLI(configPath, binPath, repoRoot, "canton", "topology", "prepare", "delegation",
 		"--root", "--root-key", "@"+pubPath, "--output", prepPrefix)
 	if err != nil {
 		t.Fatalf("prepare failed: %v", err)
@@ -214,18 +247,18 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 
 	// 3. Sign the Hash (Hash path contains 34-byte multihash)
 	hashPath := prepPrefix + ".hash"
-	sig, err := runCLI(binPath, repoRoot, "crypto", "sign", "@"+privPath, "@"+hashPath, "--algo", "ecdsa256")
+	sig, err := runCLI(configPath, binPath, repoRoot, "crypto", "sign", "@"+privPath, "@"+hashPath, "--algo", "ecdsa256")
 	if err != nil {
 		t.Fatalf("sign failed: %v\nOutput: %s", err, sig)
 	}
 	sig = strings.TrimSpace(sig)
 
 	// 4. Assemble
-	fp, _ := runCLI(binPath, repoRoot, "crypto", "fingerprint", "@"+pubPath)
+	fp, _ := runCLI(configPath, binPath, repoRoot, "crypto", "fingerprint", "@"+pubPath)
 	fp = strings.TrimSpace(fp)
 
 	certPath := filepath.Join(tmpDir, "tx.cert")
-	assembleOut, err := runCLI(binPath, repoRoot, "canton", "topology", "assemble",
+	assembleOut, err := runCLI(configPath, binPath, repoRoot, "canton", "topology", "assemble",
 		"--prepared-transaction", "@"+prepPrefix+".prep",
 		"--signature", sig,
 		"--signature-algorithm", "ecdsa256",
@@ -237,7 +270,7 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 	}
 
 	// 5. Verify
-	out, err := runCLI(binPath, repoRoot, "canton", "topology", "verify",
+	out, err := runCLI(configPath, binPath, repoRoot, "canton", "topology", "verify",
 		"--input", "@"+certPath,
 		"--public-key", "@"+pubPath)
 	if err != nil {
@@ -248,8 +281,9 @@ func TestCLI_VerifySignature_ECDSA(t *testing.T) {
 	}
 }
 
-func runCLI(bin, dir string, args ...string) (string, error) {
-	cmd := exec.Command(bin, args...)
+func runCLI(configPath, bin, dir string, args ...string) (string, error) {
+	fullArgs := append([]string{"--config", configPath}, args...)
+	cmd := exec.Command(bin, fullArgs...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PROTO_IMAGE="+os.Getenv("PROTO_IMAGE"))
 	var stdout, stderr bytes.Buffer
@@ -262,8 +296,9 @@ func runCLI(bin, dir string, args ...string) (string, error) {
 	return stdout.String(), nil
 }
 
-func runCLIWithStdin(bin, dir, stdin string, args ...string) (string, error) {
-	cmd := exec.Command(bin, args...)
+func runCLIWithStdin(configPath, bin, dir, stdin string, args ...string) (string, error) {
+	fullArgs := append([]string{"--config", configPath}, args...)
+	cmd := exec.Command(bin, fullArgs...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PROTO_IMAGE="+os.Getenv("PROTO_IMAGE"))
 	cmd.Stdin = strings.NewReader(stdin)
