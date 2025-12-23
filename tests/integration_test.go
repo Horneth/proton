@@ -60,10 +60,16 @@ func TestCLI_BasicFlow(t *testing.T) {
 	}
 
 	// 5. Test specialized prepare
-	keyPath := filepath.Join(repoRoot, "ecdsa_pub.der")
+	tempDir := t.TempDir()
+	keyPath := filepath.Join(tempDir, "test_pub.der")
+
+	// Generate a dummy ECDSA key for the test
+	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pubBytes, _ := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	os.WriteFile(keyPath, pubBytes, 0644)
 
 	out, err = runCLI(binPath, repoRoot, "canton", "topology", "prepare", "delegation",
-		"--root", "--root-key", "@"+keyPath, "--output", filepath.Join(t.TempDir(), "test-prep"))
+		"--root", "--root-key", "@"+keyPath, "--output", filepath.Join(tempDir, "test-prep"))
 	if err != nil {
 		t.Fatalf("canton prepare failed: %v\nOutput: %s", err, out)
 	}

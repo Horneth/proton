@@ -107,13 +107,9 @@ func (p *Processor) expandMap(ctx context.Context, md protoreflect.MessageDescri
 func (p *Processor) expandBytes(ctx context.Context, data []byte, m *config.Mapping) (interface{}, error) {
 	binaryData := data
 	if m.Versioned {
-		wrapperFiles, err := p.Loader.LoadSchema(ctx, "untyped_versioned_message.proto")
-		if err != nil {
-			return nil, err
-		}
-		wrapperMsgDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
+		wrapperMsgDesc := loader.FindMessage(p.Files, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
 		if wrapperMsgDesc == nil {
-			return nil, fmt.Errorf("wrapper descriptor not found")
+			return nil, fmt.Errorf("wrapper descriptor (UntypedVersionedMessage) not found in schema")
 		}
 		wrapperMsg := dynamicpb.NewMessage(wrapperMsgDesc)
 		if err := proto.Unmarshal(binaryData, wrapperMsg); err != nil {
@@ -232,13 +228,9 @@ func (p *Processor) compressBytes(ctx context.Context, data interface{}, m *conf
 
 	// 3. Wrap if versioned
 	if m.Versioned {
-		wrapperFiles, err := p.Loader.LoadSchema(ctx, "untyped_versioned_message.proto")
-		if err != nil {
-			return nil, err
-		}
-		wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
+		wrapperDesc := loader.FindMessage(p.Files, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
 		if wrapperDesc == nil {
-			return nil, fmt.Errorf("wrapper descriptor not found")
+			return nil, fmt.Errorf("wrapper descriptor (UntypedVersionedMessage) not found in schema")
 		}
 
 		// Check if it's already wrapped to avoid double wrapping

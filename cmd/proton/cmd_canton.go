@@ -244,7 +244,8 @@ func initCantonCommands(cantonCmd *cobra.Command) {
 
 			// 2. Handle Version Wrapping
 			// Try to unwrap as UntypedVersionedMessage
-			wrapperFiles, err := e.Loader.LoadSchema(context.Background(), "untyped_versioned_message.proto")
+			// We load it from the same schemaFile (it's now bundled in the image)
+			wrapperFiles, err := e.Loader.LoadSchema(context.Background(), schemaFile)
 			if err == nil {
 				wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
 				if wrapperDesc != nil {

@@ -90,11 +90,18 @@ echo "Building Buf Image..."
     --path ledger_api/com/daml/ledger/api/v2/package_reference.proto \
     --path ledger_api/com/daml/ledger/api/v2/offset_checkpoint.proto \
     --path ledger_api/com/daml/ledger/api/v2/crypto.proto \
+    --path community_base/com/digitalasset/canton/protocol/v30/topology.proto \
+    --path community_base/com/digitalasset/canton/protocol/v30/synchronizer_parameters.proto \
+    --path community_base/com/digitalasset/canton/protocol/v30/traffic_control_parameters.proto \
+    --path community_base/com/digitalasset/canton/protocol/v30/sequencing_parameters.proto \
+    --path community_base/com/digitalasset/canton/protocol/v30/crypto.proto \
+    --path community_base/com/digitalasset/canton/version/v1/untyped_versioned_message.proto \
+    --path community_base/com/digitalasset/canton/crypto/v30/crypto.proto \
     --path external/google/rpc/status.proto \
     --path external/google/rpc/error_details.proto \
     --path external/scalapb/scalapb.proto \
-    -o ../interactive_submission_image.binpb
+    -o ../canton_buf_image.binpb
 )
 
-echo "Done! interactive_submission_image.binpb is ready."
+echo "Done! canton_buf_image.binpb is ready."
 rm -rf "$WORK_DIR"

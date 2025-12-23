@@ -44,12 +44,16 @@ func (e *Engine) Template(ctx context.Context, schemaPath, msgName string) (inte
 func (e *Engine) Decode(ctx context.Context, schemaPath, msgName string, binaryData []byte, versioned bool) (interface{}, error) {
 	resolvedMsgName := e.Config.ResolveAlias(msgName)
 
+	files, err := e.Loader.LoadSchema(ctx, schemaPath)
+	if err != nil {
+		return nil, err
+	}
+
 	if versioned {
-		wrapperFiles, err := e.Loader.LoadSchema(ctx, "untyped_versioned_message.proto")
-		if err != nil {
-			return nil, fmt.Errorf("failed to load wrapper schema: %v", err)
+		wrapperMsgDesc := loader.FindMessage(files, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
+		if wrapperMsgDesc == nil {
+			return nil, fmt.Errorf("could not find UntypedVersionedMessage in schema")
 		}
-		wrapperMsgDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
 		wrapperMsg := dynamicpb.NewMessage(wrapperMsgDesc)
 		if err := proto.Unmarshal(binaryData, wrapperMsg); err != nil {
 			return nil, fmt.Errorf("failed to unmarshal versioned wrapper: %v", err)
@@ -57,10 +61,6 @@ func (e *Engine) Decode(ctx context.Context, schemaPath, msgName string, binaryD
 		binaryData = wrapperMsg.Get(wrapperMsgDesc.Fields().ByName("data")).Bytes()
 	}
 
-	files, err := e.Loader.LoadSchema(ctx, schemaPath)
-	if err != nil {
-		return nil, err
-	}
 	foundMsg := loader.FindMessage(files, resolvedMsgName)
 	if foundMsg == nil {
 		return nil, fmt.Errorf("could not find message: %s", resolvedMsgName)
@@ -121,11 +121,10 @@ func (e *Engine) Generate(ctx context.Context, schemaPath, msgName string, jsonD
 	}
 
 	if versionNum != nil {
-		wrapperFiles, err := e.Loader.LoadSchema(ctx, "untyped_versioned_message.proto")
-		if err != nil {
-			return nil, fmt.Errorf("failed to load wrapper schema: %v", err)
+		wrapperDesc := loader.FindMessage(files, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
+		if wrapperDesc == nil {
+			return nil, fmt.Errorf("could not find UntypedVersionedMessage in schema")
 		}
-		wrapperDesc := loader.FindMessage(wrapperFiles, "com.digitalasset.canton.version.v1.UntypedVersionedMessage")
 		wrapperMsg := dynamicpb.NewMessage(wrapperDesc)
 		wrapperMsg.Set(wrapperDesc.Fields().ByName("data"), protoreflect.ValueOfBytes(binaryData))
 		wrapperMsg.Set(wrapperDesc.Fields().ByName("version"), protoreflect.ValueOfInt32(*versionNum))

@@ -1,36 +1,29 @@
-# Makefile for Proton Toolkit
+.PHONY: all build generate test clean
 
-.PHONY: all build clean cross-compile
+BINARY_NAME=bin/proton
+DAML_GEN_SCRIPT=scripts/generate_daml.sh
+IMAGE=canton_buf_image.binpb
 
-# Binary names
-BIN_NAME=proton
+all: generate build test
 
-# Build directory
-BUILD_DIR=bin
-
-all: build
+generate:
+	@echo "Generating Daml Protobuf code..."
+	@./$(DAML_GEN_SCRIPT)
 
 build:
-	@echo "Building proton binary..."
-	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BIN_NAME) ./cmd/proton
-	@echo "Done. Binary is in $(BUILD_DIR)/"
+	@echo "Building $(BINARY_NAME)..."
+	@go build -o $(BINARY_NAME) ./cmd/proton
 
-test: build
-	@if [ -z "$$PROTO_IMAGE" ]; then \
-		echo "ERROR: PROTO_IMAGE must be set for engine and integration tests."; \
-		exit 1; \
-	fi
-	@echo "Running all tests..."
-	go test -v ./...
+test:
+	@echo "Running tests..."
+	@go test -v ./pkg/...
+	@go test -v ./tests/...
 
 clean:
 	@echo "Cleaning up..."
-	rm -rf $(BUILD_DIR)
+	@rm -rf bin/
+	@rm -rf pkg/daml/proto
+	@echo "Note: $(IMAGE) is preserved as it is a required source."
 
-cross-compile:
-	@echo "Cross-compiling for Linux and Windows..."
-	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/$(BIN_NAME)-linux-amd64 ./cmd/proton
-	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/$(BIN_NAME)-windows-amd64.exe ./cmd/proton
-	@echo "Cross-compilation complete."
+# Helper for rebuilding everything from scratch
+rebuild: clean generate build test

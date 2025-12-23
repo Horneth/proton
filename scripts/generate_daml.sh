@@ -3,7 +3,7 @@ set -e
 
 export PATH=$PATH:$(go env GOPATH)/bin
 
-IMAGE="interactive_submission_image.binpb"
+IMAGE="canton_buf_image.binpb"
 
 if [ ! -f "$IMAGE" ]; then
     echo "Error: $IMAGE not found."
