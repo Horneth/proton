@@ -1,0 +1,54 @@
+# GoReleaser configuration for proton
+# See https://goreleaser.com for full documentation
+
+version: 2
+
+project_name: proton
+
+before:
+  hooks:
+    - go mod tidy
+    # Generate code before building. 
+    # Note: goreleaser runs builds in a temporary directory, 
+    # but hooks run in the project root.
+    - ./scripts/generate_daml.sh
+
+builds:
+  - id: proton
+    main: ./cmd/proton
+    binary: proton
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}{{ with .Mips }}_{{ . }}{{ end }}{{ if not (eq .Amd64 "v1") }}{{ .Amd64 }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - 'README'
+
+release:
+  github:
+    owner: Horneth
+    name: proton
+  # Use the draft feature so you can review the release before it goes public
+  draft: true
+  prerelease: auto
