@@ -157,7 +157,7 @@ func TestCLI_VerifySignature(t *testing.T) {
 	wrongPubPath := filepath.Join(tmpDir, "wrong.pub")
 	os.WriteFile(wrongPubPath, wrongPubDer, 0644)
 
-	out, err = runCLI(binPath, repoRoot, "canton", "topology", "verify",
+	_, err = runCLI(binPath, repoRoot, "canton", "topology", "verify",
 		"--input", "@"+certPath,
 		"--public-key", "@"+wrongPubPath)
 
