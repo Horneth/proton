@@ -19,24 +19,13 @@ if [ -z "$COMMUNITY_BASE_ROOT" ] || [ -z "$LEDGER_API_ROOT" ]; then
     exit 1
 fi
 
-# Find value.proto
-VAL_PROTO=$(find "$ROOT_PATH" -name "value.proto" | grep "com/daml/ledger/api/v2" | head -n 1)
-if [ -z "$VAL_PROTO" ]; then
-    echo "Error: Could not locate value.proto. Make sure the repository is initialized/built."
-    exit 1
-fi
-
 echo "Found Community Base: $COMMUNITY_BASE_ROOT"
 echo "Found Ledger API: $LEDGER_API_ROOT"
-echo "Found value.proto: $VAL_PROTO"
 
 # 2. Prepare Workspace
 WORK_DIR="buf_image_build_work"
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR/external/com/daml/ledger/api/v2"
-
-# Copy value.proto to our workspace so it's part of a root
-cp "$VAL_PROTO" "$WORK_DIR/external/com/daml/ledger/api/v2/value.proto"
 
 # Download dependencies
 download_if_not_exists() {
@@ -49,6 +38,7 @@ download_if_not_exists() {
   fi
 }
 
+download_if_not_exists "https://raw.githubusercontent.com/digital-asset/daml/refs/heads/main/sdk/daml-lf/ledger-api-value/src/main/protobuf/com/daml/ledger/api/v2/value.proto" "com/daml/ledger/api/v2/value.proto"
 download_if_not_exists "https://raw.githubusercontent.com/googleapis/googleapis/3597f7db2191c00b100400991ef96e52d62f5841/google/rpc/status.proto" "google/rpc/status.proto"
 download_if_not_exists "https://raw.githubusercontent.com/protocolbuffers/protobuf/407aa2d9319f5db12964540810b446fecc22d419/src/google/protobuf/empty.proto" "google/protobuf/empty.proto"
 download_if_not_exists "https://raw.githubusercontent.com/scalapb/ScalaPB/6291978a7ca8b48bd69cc98aa04cb28bc18a44a9/protobuf/scalapb/scalapb.proto" "scalapb/scalapb.proto"
