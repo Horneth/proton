@@ -33,6 +33,10 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - canton_buf_image.binpb
+      - .default.proto.config.json
+      - scripts/install.sh
 
 checksum:
   name_template: 'checksums.txt'

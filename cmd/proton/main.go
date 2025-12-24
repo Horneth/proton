@@ -24,7 +24,7 @@ func main() {
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			if configPath == "" {
 				home, _ := os.UserHomeDir()
-				defaultConfig := home + "/.proto.config.json"
+				defaultConfig := home + "/.proton/config.json"
 				if _, err := os.Stat(defaultConfig); err == nil {
 					configPath = defaultConfig
 				}
@@ -79,17 +79,43 @@ func main() {
 // resolveSchemaArgs is a helper shared across command files
 func resolveSchemaArgs(args []string) (string, []string, error) {
 	envImage := os.Getenv("PROTO_IMAGE")
+
+	// Determine the default system image if PROTO_IMAGE is not set
+	defaultSystemImage := ""
+	if envImage == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			path := home + "/.proton/proton.binpb"
+			if _, err := os.Stat(path); err == nil {
+				defaultSystemImage = path
+			}
+		}
+	}
+
 	if len(args) > 0 {
+		// If the first argument is an existing file, use it as the image
 		if _, err := os.Stat(args[0]); err == nil {
 			return args[0], args[1:], nil
 		}
+		// Otherwise, attempt to use the environment image or system image
 		if envImage != "" {
 			return envImage, args, nil
 		}
-		return "", nil, fmt.Errorf("schema file %s not found and PROTO_IMAGE not set", args[0])
+		if defaultSystemImage != "" {
+			return defaultSystemImage, args, nil
+		}
+		return "", nil, fmt.Errorf("schema file %s not found, and neither PROTO_IMAGE nor ~/.proton/proton.binpb are available", args[0])
 	}
+
 	if envImage != "" {
 		return envImage, nil, nil
 	}
-	return "", nil, fmt.Errorf("missing schema file and PROTO_IMAGE not set")
+	if defaultSystemImage != "" {
+		return defaultSystemImage, nil, nil
+	}
+	// Final fallback: check for locally bundled image if it exists in current dir (for dev)
+	if _, err := os.Stat("canton_buf_image.binpb"); err == nil {
+		return "canton_buf_image.binpb", nil, nil
+	}
+
+	return "", nil, fmt.Errorf("missing schema file (checked PROTO_IMAGE, ~/.proton/proton.binpb, and current directory)")
 }

@@ -1,0 +1,17 @@
+{
+    "aliases": {
+        "SignedTopologyTransaction": "com.digitalasset.canton.protocol.v30.SignedTopologyTransaction",
+        "TopologyTransaction": "com.digitalasset.canton.protocol.v30.TopologyTransaction",
+        "SigningPublicKey": "com.digitalasset.canton.crypto.v30.SigningPublicKey",
+        "PreparedTransaction": "com.daml.ledger.api.v2.interactive.PreparedTransaction"
+    },
+    "mappings": [
+        {
+            "type": "com.digitalasset.canton.protocol.v30.SignedTopologyTransaction",
+            "field": "transaction",
+            "target_type": "com.digitalasset.canton.protocol.v30.TopologyTransaction",
+            "versioned": true,
+            "default_version": 30
+        }
+    ]
+}
