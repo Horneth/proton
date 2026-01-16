@@ -186,3 +186,23 @@ func Sign(message, privateKeyData []byte, algo string) ([]byte, error) {
 		return nil, fmt.Errorf("unsupported signing algorithm: %s", algo)
 	}
 }
+
+// ComputeAuthenticationTokenHash computes the hash for an authentication token.
+// Logic: SHA256( Purpose(14) || Nonce || Length(SynchronizerID) || SynchronizerID )
+// The result is prefixed with the SHA256 multihash header (0x12 0x20).
+func ComputeAuthenticationTokenHash(nonce []byte, synchronizerId string) []byte {
+	// Encode synchronizerId: 4-byte BigEndian length + UTF-8 bytes
+	synchIdBytes := []byte(synchronizerId)
+	lenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(lenBytes, uint32(len(synchIdBytes)))
+
+	// Construct payload: Nonce + Length + SynchronizerID bytes
+	payload := make([]byte, 0, len(nonce)+4+len(synchIdBytes))
+	payload = append(payload, nonce...)
+	payload = append(payload, lenBytes...)
+	payload = append(payload, synchIdBytes...)
+
+	// ComputeHash will prepend the 4-byte purpose (14) and hash the whole thing,
+	// then prepend the multihash header.
+	return ComputeHash(payload, 14)
+}

@@ -18,6 +18,7 @@ Proton is a versatile Go-based CLI tool designed for working with Protobuf messa
 - **Cryptographic Utilities**:
     - `crypto fingerprint`: Compute Canton-compatible fingerprints for public keys.
     - `crypto sign`: Sign arbitrary data using standard algorithms (Ed25519, ECDSA).
+    - `crypto hash-nonce`: Compute secure authentication hashes for synchronizer nonces.
 
 ## Getting Started
 
@@ -84,6 +85,15 @@ proton canton topology prepare delegation --root-key @root.pub --target-key @new
 # 2. Assemble with signature
 proton canton topology assemble --prepared-transaction @my_delegation.prep --signature @sig.bin --signature-algorithm ed25519 --signed-by <fingerprint> --output cert.bin
 ```
+
+### Crypto Utilities
+Compute an authentication token hash and sign it in one go (Ed25519):
+```bash
+# Compute hash of nonce from file (output as base64) -> Sign hash (input as base64)
+proton crypto hash-nonce my-synchronizer @nonce.txt --output base64 | \
+proton crypto sign @private.key - --base64
+```
+
 
 ## Development
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"log"
 
@@ -63,4 +64,31 @@ func initCryptoCommands(cryptoCmd *cobra.Command) {
 
 	cryptoCmd.AddCommand(fingerprintCmd)
 	cryptoCmd.AddCommand(signCmd)
+
+	var outputFormat string
+	var hashNonceCmd = &cobra.Command{
+		Use:   "hash-nonce [synchronizer-id] [nonce]",
+		Short: "Compute Canton authentication token hash",
+		Args:  cobra.ExactArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			synchronizerId := args[0]
+			nonceInput := args[1]
+
+			nonce, err := io.ReadData(nonceInput, isBase64Crypto)
+			if err != nil {
+				log.Fatalf("failed to read nonce: %v", err)
+			}
+
+			hash := canton.ComputeAuthenticationTokenHash(nonce, synchronizerId)
+			if outputFormat == "base64" {
+				fmt.Print(io.EncodeData(hash, true))
+			} else {
+				fmt.Println(hex.EncodeToString(hash))
+			}
+		},
+	}
+	hashNonceCmd.Flags().BoolVarP(&isBase64Crypto, "base64", "b", false, "Is nonce base64 encoded")
+	hashNonceCmd.Flags().StringVarP(&outputFormat, "output", "o", "hex", "Output format (hex, base64)")
+
+	cryptoCmd.AddCommand(hashNonceCmd)
 }
