@@ -19,3 +19,5 @@ interactive_submission_image.binpb.tmp
 *.hash
 *.prep
 transaction.json
+
+.idea
