@@ -1,32 +1,33 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
-# ADD THIS: Fallback template for PRs without labels
-template: |
-  * $TITLE (#$NUMBER) @$AUTHOR
+# This defines the format for EVERY line in the release notes
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+
+# Fallback if no PRs are found
+no-changes-template: 'No changes merged since last release.'
 
 categories:
   - title: '🚀 Features'
     labels:
       - 'feature'
       - 'enhancement'
-    template: '- $TITLE (#$NUMBER) @$AUTHOR'
   - title: '🐛 Bug Fixes'
     labels:
       - 'bug'
+    # Override the global change-template just for bugs to include the body
     template: |
       - **$TITLE** (#$NUMBER) @$AUTHOR
         $BODY
+  - title: '📖 Documentation'
+    labels:
+      - 'documentation'
   - title: '🏠 Maintenance'
     labels:
       - 'chore'
       - 'dependencies'
-    template: '- $TITLE (#$NUMBER) @$AUTHOR'
-  - title: '📖 Documentation' # New Category
-    labels: [ 'documentation' ]
 
 replacers:
-  # Wrapped in single quotes to escape backslashes for the RegEx engine
   - search: '/[\s\S]*## Release Notes\s*([\s\S]*?)(?=\n#|$)/g'
     replace: '> $1'
 
