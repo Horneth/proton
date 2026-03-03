@@ -1,0 +1,32 @@
+# .github/release-drafter.yml
+
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# This section defines how PRs are grouped based on their Labels
+categories:
+  - title: '🚀 Features'
+    labels:
+      - 'feature'
+      - 'enhancement'
+    template: '- $TITLE (#$NUMBER) @$AUTHOR'
+
+  - title: '🐛 Bug Fixes'
+    labels:
+      - 'bug'
+    # For bugs, we use $BODY to pull in the detailed notes
+    template: |
+      - **$TITLE** (#$NUMBER) @$AUTHOR
+        $BODY
+
+  - title: '🏠 Maintenance'
+    labels:
+      - 'chore'
+      - 'dependencies'
+    template: '- $TITLE (#$NUMBER) @$AUTHOR'
+
+# This logic cleans up the PR $BODY for the "Bug Fixes" section
+# It extracts only the text between "## Release Notes" and the next header
+replacers:
+  - search: '/[\s\S]*## Release Notes\s*([\s\S]*?)(?=\n#|$)/g'
+    replace: '> $1'
