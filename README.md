@@ -114,3 +114,5 @@ All file inputs in Proton strictly follow the **`@` prefix convention**:
 - Use `@path/to/file` to read content from a file.
 - Omit the `@` to treat the input as a literal string or base64.
 - Use `-` to read from `stdin`.
+
+Thanks for using proton!
