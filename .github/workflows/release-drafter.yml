@@ -4,14 +4,18 @@ on:
   push:
     branches:
       - main
+  # Using simple pull_request trigger
   pull_request:
     types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
 
 jobs:
   update_release_draft:
     permissions:
-      contents: write
-      pull-requests: write # Note: it's a hyphen here, not an underscore
+      contents: write  # to create/update a release
+      pull-requests: write  # to add labels to PRs
     runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v6

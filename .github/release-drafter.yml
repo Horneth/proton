@@ -1,32 +1,38 @@
-# .github/release-drafter.yml
-
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
-# This section defines how PRs are grouped based on their Labels
+# ADD THIS: Fallback template for PRs without labels
+template: |
+  * $TITLE (#$NUMBER) @$AUTHOR
+
 categories:
   - title: '🚀 Features'
     labels:
       - 'feature'
       - 'enhancement'
     template: '- $TITLE (#$NUMBER) @$AUTHOR'
-
   - title: '🐛 Bug Fixes'
     labels:
       - 'bug'
-    # For bugs, we use $BODY to pull in the detailed notes
     template: |
       - **$TITLE** (#$NUMBER) @$AUTHOR
         $BODY
-
   - title: '🏠 Maintenance'
     labels:
       - 'chore'
       - 'dependencies'
     template: '- $TITLE (#$NUMBER) @$AUTHOR'
+  - title: '📖 Documentation' # New Category
+    labels: [ 'documentation' ]
 
-# This logic cleans up the PR $BODY for the "Bug Fixes" section
-# It extracts only the text between "## Release Notes" and the next header
 replacers:
+  # Wrapped in single quotes to escape backslashes for the RegEx engine
   - search: '/[\s\S]*## Release Notes\s*([\s\S]*?)(?=\n#|$)/g'
     replace: '> $1'
+
+autolabeler:
+  - label: 'documentation'
+    files:
+      - '*.md'
+      - '*.rst'
+      - 'docs/**/*'
