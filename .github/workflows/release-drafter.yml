@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - main
-  # Remove the specific 'types' to let the action handle the default PR events
-  pull_request: {}
+  # Triggering on PR allows the autolabeler to work in real-time
+  pull_request:
+    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
@@ -17,9 +18,8 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: release-drafter/release-drafter@v6
+      - uses: release-drafter/release-drafter@v5.25.0 # Pinned to a stable v5
         with:
-          # Explicitly pointing to the config file helps bypass some auto-detection logic
           config-name: release-drafter.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

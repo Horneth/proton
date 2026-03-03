@@ -1,14 +1,10 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
-# The validator REQUIRES this exact key at the root
-template: |
-  # What's Changed
-  $CHANGES
-
-# This defines the format for individual lines inside $CHANGES
+# Global line format
 change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
 
+# Category definitions
 categories:
   - title: '🚀 Features'
     labels:
@@ -17,8 +13,8 @@ categories:
   - title: '🐛 Bug Fixes'
     labels:
       - 'bug'
-    # Use 'change-template' inside categories if you want to override the line format
-    change-template: |
+    # Use 'template' here for the specific bug format override
+    template: |
       - **$TITLE** (#$NUMBER) @$AUTHOR
         $BODY
   - title: '📖 Documentation'
@@ -29,13 +25,21 @@ categories:
       - 'chore'
       - 'dependencies'
 
+# Clean up the $BODY for the Bug category
 replacers:
   - search: '/[\s\S]*## Release Notes\s*([\s\S]*?)(?=\n#|$)/g'
     replace: '> $1'
 
+# Auto-apply documentation label
 autolabeler:
   - label: 'documentation'
     files:
       - '*.md'
       - '*.rst'
       - 'docs/**/*'
+
+# Required root template for v5
+template: |
+  ## What's Changed
+
+  $CHANGES
