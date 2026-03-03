@@ -2,27 +2,18 @@ name: Release Drafter
 
 on:
   push:
-    # branches to consider (main, master, etc)
     branches:
       - main
-  # pull_request event is required only for autolabeler
   pull_request:
     types: [opened, reopened, synchronize]
-
-permissions:
-  contents: write
-  pull_requests: read
 
 jobs:
   update_release_draft:
     permissions:
-      # write permission is required to create a github release
       contents: write
-      # write permission is required for autolabeler
-      pull_requests: write
+      pull-requests: write # Note: it's a hyphen here, not an underscore
     runs-on: ubuntu-latest
     steps:
-      # (Optional) Drafts your next release notes as pull requests are merged into "main"
       - uses: release-drafter/release-drafter@v6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
