@@ -1,11 +1,13 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
-# This defines the format for EVERY line in the release notes
-change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+# The validator REQUIRES this exact key at the root
+template: |
+  # What's Changed
+  $CHANGES
 
-# Fallback if no PRs are found
-no-changes-template: 'No changes merged since last release.'
+# This defines the format for individual lines inside $CHANGES
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
 
 categories:
   - title: '🚀 Features'
@@ -15,8 +17,8 @@ categories:
   - title: '🐛 Bug Fixes'
     labels:
       - 'bug'
-    # Override the global change-template just for bugs to include the body
-    template: |
+    # Use 'change-template' inside categories if you want to override the line format
+    change-template: |
       - **$TITLE** (#$NUMBER) @$AUTHOR
         $BODY
   - title: '📖 Documentation'

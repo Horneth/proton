@@ -4,9 +4,8 @@ on:
   push:
     branches:
       - main
-  # Using simple pull_request trigger
-  pull_request:
-    types: [opened, reopened, synchronize]
+  # Remove the specific 'types' to let the action handle the default PR events
+  pull_request: {}
 
 permissions:
   contents: read
@@ -14,10 +13,13 @@ permissions:
 jobs:
   update_release_draft:
     permissions:
-      contents: write  # to create/update a release
-      pull-requests: write  # to add labels to PRs
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: release-drafter/release-drafter@v6
+        with:
+          # Explicitly pointing to the config file helps bypass some auto-detection logic
+          config-name: release-drafter.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
